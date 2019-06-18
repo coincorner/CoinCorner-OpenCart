@@ -49,9 +49,10 @@ class ControllerExtensionPaymentcoincorner extends Controller
         $data  = array(
             'APIKey' => $api_public,
             'Signature' => strtoupper($sig),
-            'Currency' => 'GBP',
+            'InvoiceCurrency' => $this->config->get('payment_coincorner_invoice_currency'),
+            'SettleCurrency' => $this->config->get('payment_coincorner_settlement_currency'),
             'Nonce' => $nonce,
-            'Amount' => $amount,
+            'InvoiceAmount' => $amount,
             'NotificationURL' => $notify_url,
             'ItemDescription' => join($description, ', '),
             'ItemCode' => '',

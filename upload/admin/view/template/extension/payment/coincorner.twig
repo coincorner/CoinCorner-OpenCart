@@ -68,6 +68,22 @@
             </div>
           </div>
 
+            <div class="form-group">
+            <label class="col-sm-2 control-label" for="input-invoice-currency">{{ entry_api_invoice_currency }}</label>
+            <div class="col-sm-10">
+              <input type="text" name="payment_coincorner_invoice_currency" value="{{ payment_coincorner_invoice_currency }}" placeholder="{{ entry_api_invoice_currency }}" id="input-invoice-currency" class="form-control" />
+               <div class="help-block">The currency you want your invoices to be displayed in. Example: GBP </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="col-sm-2 control-label" for="input-api-settle-currency">{{ entry_api_settlement_currency }}</label>
+            <div class="col-sm-10">
+              <input type="text" name="payment_coincorner_settlement_currency" value="{{ payment_coincorner_settlement_currency }}" placeholder="{{ entry_api_settlement_currency}}" id="input-api-user-id" class="form-control" />
+              <div class="help-block">The currency you want your orders to be settled in on your CoinCorner Account. Example: GBP </div>
+            </div>
+          </div>
+
           <div class="form-group">
             <label class="col-sm-2 control-label" for="input-order-status">{{ entry_order_status }}</label>
             <div class="col-sm-10">
