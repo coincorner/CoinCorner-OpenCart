@@ -14,12 +14,10 @@ class ControllerExtensionPaymentcoincorner extends Controller
     }
 
 
-    public function Generate_Sig()
+    public function Generate_Sig($nonce)
     {
         $api_secret = strtolower($this->config->get('payment_coincorner_api_auth_private'));
         $account_id = strtolower($this->config->get('payment_coincorner_api_user_id'));
-        $date  = date_create();
-        $nonce = date_timestamp_get($date);
         $api_public = strtolower($this->config->get('payment_coincorner_api_auth_public'));
 
         return strtolower(hash_hmac('sha256', $nonce . $account_id . $api_public, $api_secret));
@@ -35,7 +33,7 @@ class ControllerExtensionPaymentcoincorner extends Controller
         $date  = date_create();
         $nonce = date_timestamp_get($date);
         
-        $sig = $this->Generate_Sig();
+        $sig = $this->Generate_Sig($nonce);
         $amount      = floatval(number_format($order_info['total'], 8, '.', ''));
         $call_url = 'https://checkout.coincorner.com/api/CreateOrder';
         $notify_url = $this->url->link('extension/payment/coincorner/callback');
@@ -120,7 +118,7 @@ class ControllerExtensionPaymentcoincorner extends Controller
             $date  = date_create();
             $nonce = date_timestamp_get($date);
             
-            $sig = $this->Generate_Sig();
+            $sig = $this->Generate_Sig($nonce);
             $data = array(
                 'APIKey' => $api_public,
                 'Signature' => $sig,
@@ -137,8 +135,8 @@ class ControllerExtensionPaymentcoincorner extends Controller
             );
 
             $context  = stream_context_create($options);
-            $test = file_get_contents($callurl, false, $context);
-            $response = json_decode($test, true);
+            $contents = file_get_contents($callurl, false, $context);
+            $response = json_decode($contents, true);
 
             switch ($response["OrderStatusText"]) {
                 case 'Complete':
