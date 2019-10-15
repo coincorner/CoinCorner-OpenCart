@@ -35,7 +35,6 @@ class ControllerExtensionPaymentcoincorner extends Controller
         
         $sig = $this->Generate_Sig($nonce);
         $amount      = floatval(number_format($order_info['total'], 8, '.', ''));
-        $call_url = 'https://checkout.coincorner.com/api/CreateOrder';
         $notify_url = $this->url->link('extension/payment/coincorner/callback');
         $redirect_url = $this->url->link('extension/payment/coincorner/success');
         $fail_URL   =  $this->url->link('extension/payment/coincorner/cancel');
@@ -59,26 +58,44 @@ class ControllerExtensionPaymentcoincorner extends Controller
             'FailRedirectURL' => $fail_URL,
         );
     
-        $options = array(
-            'http' => array(
-                'header' => "Content-type: application/x-www-form-urlencoded\r\n",
-                'method' => 'POST',
-                'content' => http_build_query($data)
-            )
-        );
-        
-        $context  = stream_context_create($options);
-        $response = json_decode(file_get_contents($call_url, false, $context), true);
-        $invoice = explode("/Checkout/", $response);
 
-        if (count($invoice) < 2) {
-            $message = "CoinCorner returned an error. Error: {$response}";
-            $this->model_checkout_order->addOrderHistory($order_info['order_id'], $this->config->get('payment_coincorner_invalid_status_id'), "Payment could not be started: {$message}");
+        $url  = 'https://checkout.coincorner.com/api/CreateOrder';
+        $curl = curl_init();
+        $curl_options = array(CURLOPT_RETURNTRANSFER => 1,CURLOPT_URL  => $url);
+        $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+        array_merge($curl_options, array(CURLOPT_POST => 1));
+        curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($data));
+
+        curl_setopt_array($curl, $curl_options);
+        curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
+
+        $response = json_decode(curl_exec($curl), TRUE);
+        $http_status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+
+
+        if($http_status != 200) {
+
+            $error_message = $response["Message"];
+
+            $message = "Payment could not be started, CoinCorner returned an error: " . $error_message;
+            $this->model_checkout_order->addOrderHistory($order_info['order_id'], $this->config->get('payment_coincorner_invalid_status_id'), $message);
             $this->response->redirect($this->url->link('checkout/cart', ''));
-        } else {
-            $this->model_checkout_order->addOrderHistory($order_info['order_id'], $this->config->get('payment_coincorner_order_status_id'), "Customer redirected to CoinCorner.com. InvoiceID : " . $invoice[1]);
-            // Redirect to payment gateway for payment
-            $this->response->redirect($response);
+
+        }
+        else {
+
+            $invoice = explode("/Checkout/", $response);
+
+            if (count($invoice) < 2) {
+                $message = "Payment could not be started, CoinCorner returned an error.";
+                $this->model_checkout_order->addOrderHistory($order_info['order_id'], $this->config->get('payment_coincorner_invalid_status_id'), $message);
+                $this->response->redirect($this->url->link('checkout/cart', ''));
+            } else {
+                $this->model_checkout_order->addOrderHistory($order_info['order_id'], $this->config->get('payment_coincorner_order_status_id'), "Customer redirected to CoinCorner.com. InvoiceID : " . $invoice[1]);
+                $this->response->redirect($response);
+            }
+
         }
     }
 
@@ -113,7 +130,6 @@ class ControllerExtensionPaymentcoincorner extends Controller
                 throw new Exception('API Keys Mismatch' . $response->APIKey . " : " . $api_public);
             }
             
-            $callurl = 'https://checkout.coincorner.com/api/CheckOrder';
             
             $date  = date_create();
             $nonce = date_timestamp_get($date);
@@ -126,40 +142,49 @@ class ControllerExtensionPaymentcoincorner extends Controller
                 'OrderId' => $order_id
             );
 
-            $options = array(
-                'http' => array(
-                    'header' => "Content-type: application/x-www-form-urlencoded\r\n",
-                    'method' => 'POST',
-                    'content' => http_build_query($data)
-                )
-            );
+            $url = 'https://checkout.coincorner.com/api/CheckOrder';
+            $curl = curl_init();
+            $curl_options = array(CURLOPT_RETURNTRANSFER => 1,CURLOPT_URL  => $url);
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+            array_merge($curl_options, array(CURLOPT_POST => 1));
+            curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($data));
 
-            $context  = stream_context_create($options);
-            $contents = file_get_contents($callurl, false, $context);
-            $response = json_decode($contents, true);
+            curl_setopt_array($curl, $curl_options);
+            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
 
-            switch ($response["OrderStatusText"]) {
-                case 'Complete':
-                    $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_paid_status_id'), 'Payment is confirmed on the network, and has been credited to the merchant. Purchased goods/services can be securely delivered to the buyer.');
-                    break;
-                case 'Pending Confirmation':
-                    $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_confirming_status_id'), 'Payment Authorising.');
-                    break;
-                case 'Expired':
-                    $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_expired_status_id'), 'Buyer did not pay within the required time and the invoice expired.');
-                    break;
-                case 'Cancelled':
-                    $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_canceled_status_id'), 'Buyer canceled the invoice');
-                    break;
-                case 'Refunded':
-                    $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_refunded_status_id'), 'Payment was refunded to the buyer.');
-                    break;
-                case 'N/A':
-                default:
-                    $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_invalid_status_id'), 'There was a problem with the order. Error:'.$response["Error"]);
-                    break;
+            $response = json_decode(curl_exec($curl), TRUE);
+            $http_status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+
+
+            if($http_status != 200) {
+                $this->response->addHeader('HTTP/1.1 400 FAIL');
             }
-            $this->response->addHeader('HTTP/1.1 200 OK');
+            else {
+                switch ($response["OrderStatusText"]) {
+                    case 'Complete':
+                        $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_paid_status_id'), 'Payment is confirmed on the network, and has been credited to the merchant. Purchased goods/services can be securely delivered to the buyer.');
+                        break;
+                    case 'Pending Confirmation':
+                        $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_confirming_status_id'), 'Payment Authorising.');
+                        break;
+                    case 'Expired':
+                        $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_expired_status_id'), 'Buyer did not pay within the required time and the invoice expired.');
+                        break;
+                    case 'Cancelled':
+                        $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_canceled_status_id'), 'Buyer canceled the invoice');
+                        break;
+                    case 'Refunded':
+                        $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_refunded_status_id'), 'Payment was refunded to the buyer.');
+                        break;
+                    case 'N/A':
+                    default:
+                        $this->model_checkout_order->addOrderHistory($order_id, $this->config->get('payment_coincorner_invalid_status_id'), 'There was a problem with the order. Error:'.$response["Error"]);
+                        break;
+                }
+                $this->response->addHeader('HTTP/1.1 200 OK');
+            }
+            
         } catch (Exception $e) {
             error_log('Caught exception: '. $e->getMessage());
             $this->response->addHeader('HTTP/1.1 400 FAIL');
